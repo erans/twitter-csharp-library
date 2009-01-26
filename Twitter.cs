@@ -1,7 +1,8 @@
 //
-// Yedda Twitter C# Library (or more of an API wrapper) v0.1
+// Yedda Twitter C# Library (or more of an API wrapper) v0.2
 // Written by Eran Sandler (eran AT yedda.com)
 // http://devblog.yedda.com/index.php/twitter-c-library/
+// http://github.com/erans/twitter-csharp-library
 //
 // The library is provided on a "AS IS" basis. Yedda is not repsonsible in any way 
 // for whatever usage you do with it.
@@ -28,7 +29,7 @@ namespace Yedda {
 		/// <summary>
 		/// The output formats supported by Twitter. Not all of them can be used with all of the functions.
 		/// For more information about the output formats and the supported functions Check the 
-		/// Twitter documentation at: http://groups.google.com/group/twitter-development-talk/web/api-documentation
+		/// Twitter documentation at: http://apiwiki.twitter.com/REST+API+Documentation
 		/// </summary>
 		public enum OutputFormatType {
 			JSON,
@@ -43,13 +44,18 @@ namespace Yedda {
 		public enum ObjectType {
 			Statuses,
 			Account,
-			Users
+			Users,
+			Direct_Messages,
+			Friendships,
+			Favorites,
+			Notifications,
+			Blocks
 		}
 
 		/// <summary>
 		/// The various actions used at Twitter. Not all actions works on all object types.
 		/// For more information about the actions types and the supported functions Check the 
-		/// Twitter documentation at: http://groups.google.com/group/twitter-development-talk/web/api-documentation
+		/// Twitter documentation at: http://apiwiki.twitter.com/REST+API+Documentation
 		/// </summary>
 		public enum ActionType {
 			Public_Timeline,
@@ -61,6 +67,20 @@ namespace Yedda {
 			Account_Settings,
 			Featured,
 			Show,
+			Replies,
+			Destroy,
+			Sent,
+			New,
+			Create,
+			Exists,
+			Verify_Credentials,
+			End_Session,
+			Update_Delivery_Device,
+			Update_Profile_Colors,
+			Rate_Limit_Status,
+			Update_Profile,
+			Follow,
+			Leave
 		}
 
 		private string source = null;
@@ -116,7 +136,9 @@ namespace Yedda {
 			set { twitterClientUrl = value; }
 		}
 
-		protected const string TwitterBaseUrlFormat = "http://twitter.com/{0}/{1}.{2}";
+		protected const string TwitterUrl = "http://twitter.com/";
+
+		protected const string TwitterBaseUrlFormat = TwitterUrl + "{0}/{1}.{2}";
 
 		protected string GetObjectTypeString(ObjectType objectType) {
 			return objectType.ToString().ToLower();
@@ -138,6 +160,8 @@ namespace Yedda {
 		/// <param name="password">The password to use with the request</param>
 		/// <returns>The response of the request, or null if we got 404 or nothing.</returns>
 		protected string ExecuteGetCommand(string url, string userName, string password) {
+			System.Net.ServicePointManager.Expect100Continue = false;
+
 			using (WebClient client = new WebClient()) {
 				if (!string.IsNullOrEmpty(userName) && !string.IsNullOrEmpty(password)) {
 					client.Credentials = new NetworkCredential(userName, password);
@@ -162,9 +186,7 @@ namespace Yedda {
 
 					throw ex;
 				}
-			}
-
-			return null;
+			}			
 		}
 
 		/// <summary>
@@ -177,6 +199,8 @@ namespace Yedda {
 		/// <param name="data">The data to post</param> 
 		/// <returns>The response of the request, or null if we got 404 or nothing.</returns>
 		protected string ExecutePostCommand(string url, string userName, string password, string data) {
+			System.Net.ServicePointManager.Expect100Continue = false;
+
 			WebRequest request = WebRequest.Create(url);
 			if (!string.IsNullOrEmpty(userName) && !string.IsNullOrEmpty(password)) {
 				request.Credentials = new NetworkCredential(userName, password);
@@ -540,5 +564,792 @@ namespace Yedda {
 		}
 
 		#endregion
-	}
+
+		#region Replies
+
+		public string Replies(string userName, string password, int? page, DateTime since, string since_id, OutputFormatType format) {
+			StringBuilder url = new StringBuilder(string.Format(TwitterBaseUrlFormat, GetObjectTypeString(ObjectType.Statuses), GetActionTypeString(ActionType.Replies), GetFormatTypeString(format)) + "?");
+			if (page != null) {
+				url.AppendFormat("page={0}&", page);
+			}
+			if (since != null) {
+				url.AppendFormat("since={0}&", HttpUtility.UrlEncode(since.ToString("r")));
+			}
+			if (since_id != null) {
+				url.AppendFormat("since_id={0}&", since_id);
+			}
+
+			return ExecuteGetCommand(url.ToString(), userName, password);
+		}
+
+		public string RepliesAsJSON(string userName, string password, int? page, DateTime since, string since_id) {
+			return Replies(userName, password, page, since, since_id, OutputFormatType.JSON);
+		}
+
+		public XmlDocument RepliesAsXML(string userName, string password, int? page, DateTime since, string since_id, OutputFormatType format) {
+			if (format != OutputFormatType.XML && format != OutputFormatType.Atom && format != OutputFormatType.RSS) {
+				throw new ArgumentException("Replies supports only XML, Atom and RSS output formats", "format");
+			}
+
+			string output = Replies(userName, password, page, since, since_id, OutputFormatType.XML);
+			if (!string.IsNullOrEmpty(output)) {
+				XmlDocument xmlDocument = new XmlDocument();
+				xmlDocument.LoadXml(output);
+
+				return xmlDocument;
+			}
+
+			return null;
+		}
+
+		public XmlDocument RepliesAsXML(string userName, string password, int? page, DateTime since, string since_id) {
+			return RepliesAsXML(userName, password, page, since, since_id, OutputFormatType.XML);
+		}
+
+		public XmlDocument RepliesAsRSS(string userName, string password, int? page, DateTime since, string since_id) {
+			return RepliesAsXML(userName, password, page, since, since_id, OutputFormatType.RSS);
+		}
+
+		public XmlDocument RepliesAsAtom(string userName, string password, int? page, DateTime since, string since_id) {
+			return RepliesAsXML(userName, password, page, since, since_id, OutputFormatType.Atom);
+		}
+
+		#endregion
+
+		#region Destory 
+
+		public string Destroy(string userName, string password, string id, OutputFormatType format) {
+			if (string.IsNullOrEmpty(id)) {
+				throw new ArgumentNullException("id");
+			}
+			
+			string url = string.Format(TwitterBaseUrlFormat, GetObjectTypeString(ObjectType.Statuses), GetActionTypeString(ActionType.Destroy) + "/" + id, GetFormatTypeString(format));
+			return ExecutePostCommand(url, userName, password, null);
+		}
+
+		public string DestroyAsJSON(string userName, string password, string id) {
+			return Destroy(userName, password, id, OutputFormatType.JSON);
+		}
+
+		public XmlDocument DestroyAsXML(string userName, string password, string id) {
+			string output = Destroy(userName, password, id, OutputFormatType.XML);
+			if (!string.IsNullOrEmpty(output)) {
+				XmlDocument xmlDocument = new XmlDocument();
+				xmlDocument.LoadXml(output);
+
+				return xmlDocument;
+			}
+
+			return null;
+		}
+
+		#endregion
+
+		#region direct_messages
+
+		public string DirectMessages(string userName, string password, DateTime since, string since_id, int? page, OutputFormatType format) {
+			StringBuilder url = new StringBuilder(string.Format("{0}{1}.{2}?", TwitterUrl, GetObjectTypeString(ObjectType.Direct_Messages), GetFormatTypeString(format)));
+
+			if (since != null) {
+				url.AppendFormat("since={0}&", HttpUtility.UrlEncode(since.ToString("r")));
+			}
+			if (!string.IsNullOrEmpty(since_id)) {
+				url.AppendFormat("since_id={0}&", since_id);
+			}
+			if (page != null) {
+				url.AppendFormat("page={0}", page);
+			}
+
+			return ExecuteGetCommand(url.ToString(), userName, password);
+		}
+
+		public string DirectMessagesAsJSON(string userName, string password, DateTime since, string since_id, int? page) {
+			return DirectMessages(userName, password, since, since_id, page, OutputFormatType.JSON);			
+		}
+
+		public XmlDocument DirectMessagesAsXML(string userName, string password, DateTime since, string since_id, int? page, OutputFormatType format) {
+			if (format != OutputFormatType.XML && format != OutputFormatType.Atom && format != OutputFormatType.RSS) {
+				throw new ArgumentException("Direct_Messages supports only XML, Atom and RSS output formats", "format");
+			}
+
+			string output = DirectMessages(userName, password, since, since_id, page, OutputFormatType.XML);
+			if (!string.IsNullOrEmpty(output)) {
+				XmlDocument xmlDocument = new XmlDocument();
+				xmlDocument.LoadXml(output);
+
+				return xmlDocument;
+			}
+
+			return null;
+		}
+
+		public XmlDocument DirectMessagesAsXML(string userName, string password, DateTime since, string since_id, int? page) {
+			return DirectMessagesAsXML(userName, password, since, since_id, page, OutputFormatType.XML);
+		}
+
+		public XmlDocument DirectMessagesAsRSS(string userName, string password, DateTime since, string since_id, int? page) {
+			return DirectMessagesAsXML(userName, password, since, since_id, page, OutputFormatType.RSS);
+		}
+
+		public XmlDocument DirectMessagesAsAtom(string userName, string password, DateTime since, string since_id, int? page) {
+			return DirectMessagesAsXML(userName, password, since, since_id, page, OutputFormatType.Atom);
+		}
+
+		#endregion
+
+		#region direct_messages sent
+
+		public string DirectMessagesSent(string userName, string password, DateTime since, string since_id, int? page, OutputFormatType format) {
+			StringBuilder url = new StringBuilder(string.Format(TwitterBaseUrlFormat, GetObjectTypeString(ObjectType.Direct_Messages), GetActionTypeString(ActionType.Sent), GetFormatTypeString(format)) + "?");
+
+			if (since != null) {
+				url.AppendFormat("since={0}&", HttpUtility.UrlEncode(since.ToString("r")));
+			}
+			if (!string.IsNullOrEmpty(since_id)) {
+				url.AppendFormat("since_id={0}&", since_id);
+			}
+			if (page != null) {
+				url.AppendFormat("page={0}", page);
+			}
+
+			return ExecuteGetCommand(url.ToString(), userName, password);
+		}
+
+		public string DirectMessagesSentAsJSON(string userName, string password, DateTime since, string since_id, int? page) {
+			return DirectMessagesSent(userName, password, since, since_id, page, OutputFormatType.JSON);
+		}
+
+		public XmlDocument DirectMessagesSentAsXML(string userName, string password, DateTime since, string since_id, int? page) {
+			string output = DirectMessagesSent(userName, password, since, since_id, page, OutputFormatType.XML);
+			if (!string.IsNullOrEmpty(output)) {
+				XmlDocument xmlDocument = new XmlDocument();
+				xmlDocument.LoadXml(output);
+
+				return xmlDocument;
+			}
+
+			return null;
+		}
+		
+		#endregion
+
+		#region direct_messages new 
+
+		public string DirectMessagesNew(string userName, string password, string IDorScreenName, string text, OutputFormatType format) {
+			if (string.IsNullOrEmpty(IDorScreenName)) {
+				throw new ArgumentNullException("IDorScreenName");
+			}
+
+			if (string.IsNullOrEmpty(text)) {
+				throw new ArgumentNullException("text");
+			}
+			
+			string url = string.Format(TwitterBaseUrlFormat, GetObjectTypeString(ObjectType.Direct_Messages), GetActionTypeString(ActionType.New), GetFormatTypeString(format));
+			string data = string.Format("user={0}&text={1}", HttpUtility.UrlEncode(IDorScreenName), HttpUtility.UrlEncode(text));
+
+			return ExecutePostCommand(url, userName, password, data);
+		}
+
+		public string DirectMessagesNewAsJSON(string userName, string password, string IDorScreenName, string text) {
+			return DirectMessagesNew(userName, password, IDorScreenName, text, OutputFormatType.JSON);
+		}
+
+		public XmlDocument DirectMessagesNewAsXML(string userName, string password, string IDorScreenName, string text) {
+			string output = DirectMessagesNew(userName, password, IDorScreenName, text, OutputFormatType.XML);
+			if (!string.IsNullOrEmpty(output)) {
+				XmlDocument xmlDocument = new XmlDocument();
+				xmlDocument.LoadXml(output);
+
+				return xmlDocument;
+			}
+
+			return null;
+		}
+
+		#endregion
+
+		#region direct_messages destroy
+
+		public string DirectMessagesDestroy(string userName, string password, string id, OutputFormatType format) {
+			if (string.IsNullOrEmpty(id)) {
+				throw new ArgumentNullException("id");
+			}
+			
+			string url = string.Format(TwitterBaseUrlFormat, GetObjectTypeString(ObjectType.Direct_Messages), GetActionTypeString(ActionType.Destroy), GetFormatTypeString(format));
+			return ExecutePostCommand(url, userName, password, null);
+		}
+
+		public string DirectMessagesDestroyAsJSON(string userName, string password, string id) {
+			return DirectMessagesDestroy(userName, password, id, OutputFormatType.JSON);
+		}
+
+		public XmlDocument DirectMessagesDestroyAsXML(string userName, string password, string id) {
+			string output = DirectMessagesDestroy(userName, password, id, OutputFormatType.XML);
+			if (!string.IsNullOrEmpty(output)) {
+				XmlDocument xmlDocument = new XmlDocument();
+				xmlDocument.LoadXml(output);
+
+				return xmlDocument;
+			}
+
+			return null;
+		}
+
+		#endregion
+
+		#region Friendship create
+
+		public string FriendshipCreate(string userName, string password, string IDorScreenName, bool? follow, OutputFormatType format) {
+			if (string.IsNullOrEmpty(IDorScreenName)) {
+				throw new ArgumentNullException("IDorScreenName");
+			}
+
+			StringBuilder url = new StringBuilder(string.Format(TwitterBaseUrlFormat, GetObjectTypeString(ObjectType.Friendships), GetActionTypeString(ActionType.Create) + "/" + IDorScreenName + "/", GetFormatTypeString(format)) + "?");			
+			if (follow != null) {				
+				url.AppendFormat("follow={0}", (follow.Value ? "true" : "false"));
+			}
+
+			return ExecutePostCommand(url.ToString(), userName, password, null);
+		}
+
+		public string FriendshipCreateAsJSON(string userName, string password, string IDorScreenName, bool? follow) {
+			return FriendshipCreate(userName, password, IDorScreenName, follow, OutputFormatType.JSON);
+		}
+
+		public XmlDocument FriendshipCreateAsXML(string userName, string password, string IDorScreenName, bool? follow) {
+			string output = FriendshipCreate(userName, password, IDorScreenName, follow, OutputFormatType.XML);
+			if (!string.IsNullOrEmpty(output)) {
+				XmlDocument xmlDocument = new XmlDocument();
+				xmlDocument.LoadXml(output);
+
+				return xmlDocument;
+			}
+
+			return null;
+		}
+
+		#endregion
+
+		#region friendship destory
+
+		public string FriendshipDestroy(string userName, string password, string IDorScreenName, OutputFormatType format) {
+			if (string.IsNullOrEmpty(IDorScreenName)) {
+				throw new ArgumentNullException("IDorScreenName");
+			}
+			
+			string url = string.Format(TwitterBaseUrlFormat, GetObjectTypeString(ObjectType.Friendships), GetActionTypeString(ActionType.Destroy) + "/" + IDorScreenName + "/", GetFormatTypeString(format));
+			return ExecutePostCommand(url, userName, password, null);
+		}
+
+		public string FriendshipDestroyAsJSON(string userName, string password, string IDorScreenName, OutputFormatType format) {
+			return FriendshipDestroy(userName, password, IDorScreenName, OutputFormatType.JSON);
+		}
+
+		public XmlDocument FriendshipDestroyAsXML(string userName, string password, string IDorScreenName, OutputFormatType format) {
+			string output = FriendshipDestroy(userName, password, IDorScreenName, OutputFormatType.XML);
+			if (!string.IsNullOrEmpty(output)) {
+				XmlDocument xmlDocument = new XmlDocument();
+				xmlDocument.LoadXml(output);
+
+				return xmlDocument;
+			}
+
+			return null;
+		}
+
+		#endregion
+
+		#region friendship exists
+
+		public string FriendshipExists(string userName, string password, string user_a_IDorScreenName, string user_b_IDorScreenName, OutputFormatType format) {
+			if (string.IsNullOrEmpty(user_a_IDorScreenName)) {
+				throw new ArgumentNullException("user_a_IDorScreenName");
+			}
+
+			if (string.IsNullOrEmpty(user_b_IDorScreenName)) {
+				throw new ArgumentNullException("user_b_IDorScreenName");
+			}
+
+			StringBuilder url =  new StringBuilder(string.Format(TwitterBaseUrlFormat, GetObjectTypeString(ObjectType.Friendships), GetActionTypeString(ActionType.Exists), GetFormatTypeString(format)));
+			url.AppendFormat("?user_a={0}&user_b={1}", user_a_IDorScreenName, user_b_IDorScreenName);
+
+			return ExecuteGetCommand(url.ToString(), userName, password);
+		}
+
+		#endregion
+
+		#region verify_credentials
+
+		public string VerifyCredentials(string userName, string password, OutputFormatType format) {
+			if (format != OutputFormatType.JSON && format != OutputFormatType.XML) {
+				throw new ArgumentException("Replies supports only XML and JSON output formats", "format");
+			}
+
+			string url = string.Format(TwitterBaseUrlFormat, GetObjectTypeString(ObjectType.Account), GetActionTypeString(ActionType.Verify_Credentials), GetFormatTypeString(format));
+			return ExecuteGetCommand(url, userName, password);
+		}
+
+		public string VerifyCredentialsAsJSON(string userName, string password) {
+			return VerifyCredentials(userName, password, OutputFormatType.JSON);
+		}
+
+		public XmlDocument VerifyCredentialsAsXML(string userName, string password) {
+			string output = VerifyCredentials(userName, password, OutputFormatType.XML);
+			if (!string.IsNullOrEmpty(output)) {
+				XmlDocument xmlDocument = new XmlDocument();
+				xmlDocument.LoadXml(output);
+
+				return xmlDocument;
+			}
+
+			return null;
+		}
+
+		#endregion
+
+		#region end_session
+
+		public string EndSession(string userName, string password, OutputFormatType format) {
+			if (format != OutputFormatType.JSON && format != OutputFormatType.XML) {
+				throw new ArgumentException("Replies supports only XML and JSON output formats", "format");
+			}
+
+			string url = string.Format(TwitterBaseUrlFormat, GetObjectTypeString(ObjectType.Account), GetActionTypeString(ActionType.End_Session), GetFormatTypeString(format));
+			return ExecutePostCommand(url, userName, password, null);
+		}
+
+		public string EndSessionAsJSON(string userName, string password) {
+			return EndSession(userName, password, OutputFormatType.JSON);
+		}
+
+		public XmlDocument EndSessionAsXML(string userName, string password) {
+			string output = EndSession(userName, password, OutputFormatType.XML);
+			if (!string.IsNullOrEmpty(output)) {
+				XmlDocument xmlDocument = new XmlDocument();
+				xmlDocument.LoadXml(output);
+
+				return xmlDocument;
+			}
+
+			return null;
+		}
+
+		#endregion
+
+		#region update_delivery_device
+
+		public string UpdateDeliveryDevice(string userName, string password, string device, OutputFormatType format) {
+			if (format != OutputFormatType.JSON && format != OutputFormatType.XML) {
+				throw new ArgumentException("Replies supports only XML and JSON output formats", "format");
+			}
+
+			if (string.IsNullOrEmpty(device)) {
+				throw new ArgumentNullException("device");
+			}
+
+			device = device.ToLower().Trim();
+			if (device != "none" && device != "im" && device != "sms") {
+				throw new ArgumentException("device can only have the values: none,im,sms", "device");
+			}
+
+			string url = string.Format(TwitterBaseUrlFormat, GetObjectTypeString(ObjectType.Account), GetActionTypeString(ActionType.Update_Delivery_Device), GetFormatTypeString(format));
+			url += string.Format("?device={0}", device);
+			return ExecutePostCommand(url, userName, password, null);
+		}
+
+		public string UpdateDeliveryDeviceAsJSON(string userName, string password, string device) {
+			return UpdateDeliveryDevice(userName, password, device, OutputFormatType.JSON);
+		}
+
+		public XmlDocument UpdateDeliveryDeviceAsXML(string userName, string password, string device) {
+			string output = UpdateDeliveryDevice(userName, password, device, OutputFormatType.XML);
+			if (!string.IsNullOrEmpty(output)) {
+				XmlDocument xmlDocument = new XmlDocument();
+				xmlDocument.LoadXml(output);
+
+				return xmlDocument;
+			}
+
+			return null;
+		}
+
+		#endregion
+
+		#region update_profile_colors
+
+		public string UpdateProfileColors(string userName, string password, string profileBackgroundColor, string profileTextColor, string profileLinkColor, string profileSidebarFillColor, string profileSidebarBorderColor, OutputFormatType format) {
+			if (format != OutputFormatType.JSON && format != OutputFormatType.XML) {
+				throw new ArgumentException("Replies supports only XML and JSON output formats", "format");
+			}
+
+			string url = string.Format(TwitterBaseUrlFormat, GetObjectTypeString(ObjectType.Account), GetActionTypeString(ActionType.Update_Delivery_Device), GetFormatTypeString(format));
+			StringBuilder data = new StringBuilder();
+			if (!string.IsNullOrEmpty(profileBackgroundColor)) {
+				data.AppendFormat("profile_background_color={0}&", profileBackgroundColor);
+			}
+			if (!string.IsNullOrEmpty(profileTextColor)) {
+				data.AppendFormat("profile_text_color={0}&", profileTextColor);
+			}
+			if (!string.IsNullOrEmpty(profileLinkColor)) {
+				data.AppendFormat("profile_link_color={0}&", profileLinkColor);
+			}
+			if (!string.IsNullOrEmpty(profileSidebarFillColor)) {
+				data.AppendFormat("profile_sidebar_fill_color={0}&", profileSidebarFillColor);
+			}
+			if (!string.IsNullOrEmpty(profileSidebarBorderColor)) {
+				data.AppendFormat("profile_sidebar_border_color={0}&", profileSidebarBorderColor);
+			}
+
+			if (data[data.Length - 1] == '&') {
+				data.Remove(data.Length - 1, 1);
+			}
+
+			return ExecutePostCommand(url, userName, password, data.ToString());
+		}
+
+		public string UpdateProfileColorsAsJSON(string userName, string password, string profileBackgroundColor, string profileTextColor, string profileLinkColor, string profileSidebarFillColor, string profileSidebarBorderColor) {
+			return UpdateProfileColors(userName, password, profileBackgroundColor, profileTextColor, profileLinkColor, profileSidebarFillColor, profileSidebarBorderColor, OutputFormatType.JSON);
+		}
+
+		public XmlDocument UpdateProfileColorsAsXML(string userName, string password, string profileBackgroundColor, string profileTextColor, string profileLinkColor, string profileSidebarFillColor, string profileSidebarBorderColor) {
+			string output = UpdateProfileColors(userName, password, profileBackgroundColor, profileTextColor, profileLinkColor, profileSidebarFillColor, profileSidebarBorderColor, OutputFormatType.XML);
+			if (!string.IsNullOrEmpty(output)) {
+				XmlDocument xmlDocument = new XmlDocument();
+				xmlDocument.LoadXml(output);
+
+				return xmlDocument;
+			}
+
+			return null;
+		}
+
+		#endregion
+
+		#region rate_limit_status
+
+		public string RateLimitStatus(string userName, string password, OutputFormatType format) {
+			if (format != OutputFormatType.JSON && format != OutputFormatType.XML) {
+				throw new ArgumentException("Replies supports only XML and JSON output formats", "format");
+			}
+
+			string url = string.Format(TwitterBaseUrlFormat, GetObjectTypeString(ObjectType.Account), GetActionTypeString(ActionType.Rate_Limit_Status), GetFormatTypeString(format));
+			return ExecuteGetCommand(url, userName, password);
+		}
+
+		public string RateLimitStatusAsJSON(string userName, string password) {
+			return RateLimitStatus(userName, password, OutputFormatType.JSON);
+		}
+
+		public XmlDocument RateLimitStatusAsXML(string userName, string password) {
+			string output = RateLimitStatus(userName, password, OutputFormatType.XML);
+			if (!string.IsNullOrEmpty(output)) {
+				XmlDocument xmlDocument = new XmlDocument();
+				xmlDocument.LoadXml(output);
+
+				return xmlDocument;
+			}
+
+			return null;
+		}
+
+		#endregion
+
+		#region update_profile
+
+		public string UpdateProfile(string userName, string password, string name, string email, string url, string location, string description, OutputFormatType format) {
+			if (format != OutputFormatType.JSON && format != OutputFormatType.XML) {
+				throw new ArgumentException("Replies supports only XML and JSON output formats", "format");
+			}
+
+			string actionUrl = string.Format(TwitterBaseUrlFormat, GetObjectTypeString(ObjectType.Account), GetActionTypeString(ActionType.Update_Profile), GetFormatTypeString(format));
+
+			StringBuilder data = new StringBuilder();
+			if (!string.IsNullOrEmpty(name)) {
+				data.AppendFormat("name={0}&", name);
+			}
+			if (!string.IsNullOrEmpty(email)) {
+				data.AppendFormat("email={0}&", email);
+			}
+			if (!string.IsNullOrEmpty(url)) {
+				data.AppendFormat("url={0}&", url);
+			}
+			if (!string.IsNullOrEmpty(location)) {
+				data.AppendFormat("location={0}&", location);
+			}
+			if (!string.IsNullOrEmpty(description)) {
+				data.AppendFormat("description={0}&", description);
+			}
+
+			if (data[data.Length - 1] == '&') {
+				data.Remove(data.Length - 1, 1);
+			}
+
+			return ExecutePostCommand(actionUrl, userName, password, data.ToString());
+		}
+
+		public string UpdateProfileAsJSON(string userName, string password, string name, string email, string url, string location, string description) {
+			return UpdateProfile(userName, password, name, email, url, location, description, OutputFormatType.JSON);
+		}
+
+		public XmlDocument UpdateProfileAsXML(string userName, string password, string name, string email, string url, string location, string description) {
+			string output = UpdateProfile(userName, password, name, email, url, location, description, OutputFormatType.XML);
+			if (!string.IsNullOrEmpty(output)) {
+				XmlDocument xmlDocument = new XmlDocument();
+				xmlDocument.LoadXml(output);
+
+				return xmlDocument;
+			}
+
+			return null;
+		}
+
+		#endregion
+
+		#region favorites
+
+		public string Favorites(string userName, string password, string IDorScreenName, int? page, OutputFormatType format) {
+			StringBuilder url = new StringBuilder(string.Format("{0}{1}.{2}", TwitterUrl, GetObjectTypeString(ObjectType.Favorites), GetFormatTypeString(format)) + "?");
+			if (!string.IsNullOrEmpty(IDorScreenName)) {
+				url.AppendFormat("id={0}&", IDorScreenName);
+			}
+			if (page != null) {
+				url.AppendFormat("page={0}", page);
+			}
+
+			return ExecuteGetCommand(url.ToString(), userName, password);
+		}
+
+		public string FavoritesAsJSON(string userName, string password, string IDorScreenName, int? page, OutputFormatType format) {
+			return Favorites(userName, password, IDorScreenName, page, OutputFormatType.JSON);
+		}
+
+		public XmlDocument FavoritesAsXML(string userName, string password, string IDorScreenName, int? page, OutputFormatType format) {
+			if (format != OutputFormatType.XML && format != OutputFormatType.RSS && format != OutputFormatType.Atom) {
+				throw new ArgumentException("FavoritesAsXML supports only XML, RSS and Atom output formats", "format");
+			}
+
+			string output = Favorites(userName, password, IDorScreenName, page, format);
+			if (!string.IsNullOrEmpty(output)) {
+				XmlDocument xmlDocument = new XmlDocument();
+				xmlDocument.LoadXml(output);
+
+				return xmlDocument;
+			}
+
+			return null;
+		}
+
+		public XmlDocument FavoritesAsXML(string userName, string password, string IDorScreenName, int? page) {
+			return FavoritesAsXML(userName, password, IDorScreenName, page, OutputFormatType.XML);
+		}
+
+		public XmlDocument FavoritesAsRSS(string userName, string password, string IDorScreenName, int? page) {
+			return FavoritesAsXML(userName, password, IDorScreenName, page, OutputFormatType.RSS);
+		}
+
+		public XmlDocument FavoritesAsAtom(string userName, string password, string IDorScreenName, int? page) {
+			return FavoritesAsXML(userName, password, IDorScreenName, page, OutputFormatType.Atom);
+		}
+
+		#endregion
+
+		#region favorites create
+
+		public string FavoritesCreate(string userName, string password, string id, OutputFormatType format) {
+			if (string.IsNullOrEmpty(id)) {
+				throw new ArgumentNullException("id");
+			}
+
+			if (format != OutputFormatType.JSON && format != OutputFormatType.XML) {
+				throw new ArgumentException("FavoritesCreate supports only XML and JSON output formats", "format");
+			}			
+
+			string url = string.Format(TwitterBaseUrlFormat, GetObjectTypeString(ObjectType.Favorites), GetActionTypeString(ActionType.Create) + "/" + id, GetFormatTypeString(format));
+			return ExecutePostCommand(url, userName, password, null);
+		}
+
+		public string FavoritesCreateAsJSON(string userName, string password, string id) {
+			return FavoritesCreate(userName, password, id, OutputFormatType.JSON);
+		}
+
+		public XmlDocument FavoritesCreateAsXML(string userName, string password, string id) {
+			string output = FavoritesCreate(userName, password, id, OutputFormatType.XML);
+			if (!string.IsNullOrEmpty(output)) {
+				XmlDocument xmlDocument = new XmlDocument();
+				xmlDocument.LoadXml(output);
+
+				return xmlDocument;
+			}
+
+			return null;			
+		}
+
+		#endregion
+
+		#region favorites destroy
+
+		public string FavoritesDestroy(string userName, string password, string id, OutputFormatType format) {
+			if (string.IsNullOrEmpty(id)) {
+				throw new ArgumentNullException("id");
+			}
+
+			if (format != OutputFormatType.JSON && format != OutputFormatType.XML) {
+				throw new ArgumentException("FavoritesCreate supports only XML and JSON output formats", "format");
+			}
+
+			string url = string.Format(TwitterBaseUrlFormat, GetObjectTypeString(ObjectType.Favorites), GetActionTypeString(ActionType.Destroy) + "/" + id, GetFormatTypeString(format));
+			return ExecutePostCommand(url, userName, password, null);
+		}
+
+		public string FavoritesDestroyAsJSON(string userName, string password, string id) {
+			return FavoritesDestroy(userName, password, id, OutputFormatType.JSON);
+		}
+
+		public XmlDocument FavoritesDestroyAsXML(string userName, string password, string id) {
+			string output = FavoritesDestroy(userName, password, id, OutputFormatType.XML);
+			if (!string.IsNullOrEmpty(output)) {
+				XmlDocument xmlDocument = new XmlDocument();
+				xmlDocument.LoadXml(output);
+
+				return xmlDocument;
+			}
+
+			return null;
+		}
+
+		#endregion
+
+		#region follow
+
+		public string Follow(string userName, string password, string IDorScreenName, OutputFormatType format) {
+			if (string.IsNullOrEmpty(IDorScreenName)) {
+				throw new ArgumentNullException("IDorScreenName");
+			}
+
+			if (format != OutputFormatType.JSON && format != OutputFormatType.XML) {
+				throw new ArgumentException("Follow supports only XML and JSON output formats", "format");
+			}
+			
+			string url = string.Format(TwitterBaseUrlFormat, GetObjectTypeString(ObjectType.Notifications), GetActionTypeString(ActionType.Follow) + "/" + IDorScreenName, GetFormatTypeString(format));
+			return ExecutePostCommand(url, userName, password, null);
+		}
+
+		public string FollowAsJSON(string userName, string password, string IDorScreenName, OutputFormatType format) {
+			return Follow(userName, password, IDorScreenName, OutputFormatType.JSON);
+		}
+
+		public XmlDocument FollowAsXML(string userName, string password, string IDorScreenName, OutputFormatType format) {
+			string output = Follow(userName, password, IDorScreenName, OutputFormatType.XML);
+			if (!string.IsNullOrEmpty(output)) {
+				XmlDocument xmlDocument = new XmlDocument();
+				xmlDocument.LoadXml(output);
+
+				return xmlDocument;
+			}
+
+			return null;
+		}
+
+		#endregion
+
+		#region leave
+
+		public string Leave(string userName, string password, string IDorScreenName, OutputFormatType format) {
+			if (string.IsNullOrEmpty(IDorScreenName)) {
+				throw new ArgumentNullException("IDorScreenName");
+			}
+
+			if (format != OutputFormatType.JSON && format != OutputFormatType.XML) {
+				throw new ArgumentException("Follow supports only XML and JSON output formats", "format");
+			}
+
+			string url = string.Format(TwitterBaseUrlFormat, GetObjectTypeString(ObjectType.Notifications), GetActionTypeString(ActionType.Leave) + "/" + IDorScreenName, GetFormatTypeString(format));
+			return ExecutePostCommand(url, userName, password, null);
+		}
+
+		public string LeaveAsJSON(string userName, string password, string IDorScreenName, OutputFormatType format) {
+			return Leave(userName, password, IDorScreenName, OutputFormatType.JSON);
+		}
+
+		public XmlDocument LeaveAsXML(string userName, string password, string IDorScreenName, OutputFormatType format) {
+			string output = Leave(userName, password, IDorScreenName, OutputFormatType.XML);
+			if (!string.IsNullOrEmpty(output)) {
+				XmlDocument xmlDocument = new XmlDocument();
+				xmlDocument.LoadXml(output);
+
+				return xmlDocument;
+			}
+
+			return null;
+		}
+
+		#endregion
+
+		#region block create
+
+		public string BlockCreate(string userName, string password, string IDorScreenName, OutputFormatType format) {
+			if (string.IsNullOrEmpty(IDorScreenName)) {
+				throw new ArgumentNullException("IDorScreenName");
+			}
+
+			if (format != OutputFormatType.JSON && format != OutputFormatType.XML) {
+				throw new ArgumentException("Follow supports only XML and JSON output formats", "format");
+			}
+
+			string url = string.Format(TwitterBaseUrlFormat, GetObjectTypeString(ObjectType.Blocks), GetActionTypeString(ActionType.Create) + "/" + IDorScreenName, GetFormatTypeString(format));
+			return ExecutePostCommand(url, userName, password, null);
+		}
+
+		public string BlockCreateAsJSON(string userName, string password, string IDorScreenName, OutputFormatType format) {
+			return BlockCreate(userName, password, IDorScreenName, OutputFormatType.JSON);
+		}
+
+		public XmlDocument BlockCreateAsXML(string userName, string password, string IDorScreenName, OutputFormatType format) {
+			string output = BlockCreate(userName, password, IDorScreenName, OutputFormatType.XML);
+			if (!string.IsNullOrEmpty(output)) {
+				XmlDocument xmlDocument = new XmlDocument();
+				xmlDocument.LoadXml(output);
+
+				return xmlDocument;
+			}
+
+			return null;
+		}
+
+		#endregion
+
+		#region block destroy
+
+		public string BlockDestroy(string userName, string password, string IDorScreenName, OutputFormatType format) {
+			if (string.IsNullOrEmpty(IDorScreenName)) {
+				throw new ArgumentNullException("IDorScreenName");
+			}
+
+			if (format != OutputFormatType.JSON && format != OutputFormatType.XML) {
+				throw new ArgumentException("Follow supports only XML and JSON output formats", "format");
+			}
+
+			string url = string.Format(TwitterBaseUrlFormat, GetObjectTypeString(ObjectType.Blocks), GetActionTypeString(ActionType.Destroy) + "/" + IDorScreenName, GetFormatTypeString(format));
+			return ExecutePostCommand(url, userName, password, null);
+		}
+
+		public string BlockDestroyAsJSON(string userName, string password, string IDorScreenName, OutputFormatType format) {
+			return BlockDestroy(userName, password, IDorScreenName, OutputFormatType.JSON);
+		}
+
+		public XmlDocument BlockDestroyAsXML(string userName, string password, string IDorScreenName, OutputFormatType format) {
+			string output = BlockDestroy(userName, password, IDorScreenName, OutputFormatType.XML);
+			if (!string.IsNullOrEmpty(output)) {
+				XmlDocument xmlDocument = new XmlDocument();
+				xmlDocument.LoadXml(output);
+
+				return xmlDocument;
+			}
+
+			return null;
+		}
+
+		#endregion
+	}	
 }
+
